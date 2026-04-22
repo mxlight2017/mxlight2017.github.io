@@ -521,58 +521,6 @@
 
         
             
-    <div id="gitalk-container"></div>
-    <script data-swup-reload-script
-            src="https://cdnjs.cloudflare.com/ajax/libs/gitalk/1.8.0/gitalk.min.js"></script>
-    <script data-swup-reload-script>
-        (function() {
-            const startPath = location.pathname;
-            const startTime = Date.now();
-            const retryDelay = 200;
-            const retryLimit = 5000;
-
-            const runGitalk = () => {
-                if (location.pathname !== startPath) {
-                    return;
-                }
-
-                const container = document.getElementById('gitalk-container');
-                if (!container || typeof Gitalk === 'undefined') {
-                    if (Date.now() - startTime < retryLimit) {
-                        setTimeout(runGitalk, retryDelay);
-                    }
-                    return;
-                }
-
-                container.innerHTML = '';
-
-                let pageKey = decodeURI(location.pathname);
-                const maxLength = 50;
-                if (pageKey.length > maxLength) {
-                    pageKey = pageKey.substring(0, maxLength - 3) + '...';
-                }
-
-                try {
-                    new Gitalk({
-                        clientID: 'Ov23li1bp8kQUQHjuBZA',
-                        clientSecret: '99b5fbc448eeb19e30c928f7ca5a4c8664c62fb51',
-                        repo: 'gitalk-comment',
-                        owner: 'mxlight2017',
-                        admin: ['mxlight2017'],
-                        id: pageKey,
-                        language: 'zh-CN',
-                        proxy: 'https://github.com/login/oauth/access_token'
-                    }).render(container);
-                } catch (e) {
-                    window.Gitalk = null;
-                }
-            };
-
-            runGitalk();
-        })();
-    </script>
-
-
 
         
     
