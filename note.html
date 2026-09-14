@@ -354,11 +354,47 @@
     }
     .folder-item:hover { background:color-mix(in srgb,var(--on-surface) 7%,transparent); }
     .folder-item.add { color:var(--primary); }
+    .folder-item.delete { color:var(--error); }
     .folder-item .material-symbols-outlined { font-size:22px; }
     .folder-divider { height:1px; margin:2px 16px 4px; background:var(--outline-variant); }
     @media (max-width:767px) {
       .folder-bar { padding-top:2px; }
     }
+    .move-panel {
+      position:fixed;
+      top:calc(var(--topbar-h) + 8px);
+      right:12px;
+      z-index:60;
+      display:none;
+      flex-direction:column;
+      gap:4px;
+      min-width:180px;
+      max-width:calc(100vw - 24px);
+      padding:8px;
+      background:var(--surface-container);
+      color:var(--on-surface);
+      border:1px solid var(--outline-variant);
+      border-radius:24px;
+      box-shadow:var(--elevation-2);
+    }
+    .move-panel.open { display:flex; }
+    .move-option {
+      border:0;
+      background:transparent;
+      color:var(--on-surface);
+      min-height:44px;
+      padding:0 12px;
+      border-radius:16px;
+      display:flex;
+      align-items:center;
+      gap:12px;
+      cursor:pointer;
+      text-align:left;
+    }
+    .move-option:hover { background:color-mix(in srgb,var(--on-surface) 7%,transparent); }
+    .move-option.active { background:var(--secondary-container); color:var(--on-secondary-container); }
+    .move-option .material-symbols-outlined { font-size:22px; }
+
     .search-wrap {
       padding: 4px 10px 10px;
     }
@@ -858,6 +894,9 @@
         <div class="editor-toolbar">
           <input id="noteTitle" class="title-input" type="text" aria-label="✎" maxlength="120" />
           <span class="save-status material-symbols-outlined" id="saveStatus" aria-label="✓">cloud_done</span>
+          <button class="icon-btn" id="moveNoteBtn" type="button" aria-label="↗">
+            <span class="material-symbols-outlined">drive_file_move</span>
+          </button>
 
           <button class="icon-btn mobile-only" id="downloadMdBtnMobile" aria-label="⇩">
             <span class="material-symbols-outlined">download</span>
@@ -893,6 +932,7 @@
     </section>
   </main>
 
+  <div class="move-panel" id="movePanel" aria-hidden="true"></div>
   <div class="toast" id="toast"></div>
 
   <div class="color-panel" id="colorPanel" aria-hidden="true">
@@ -956,6 +996,8 @@
         preview: $("preview"),
         editModeBtn: $("editModeBtn"),
         previewModeBtn: $("previewModeBtn"),
+        moveNoteBtn: $("moveNoteBtn"),
+        movePanel: $("movePanel"),
         themeToggle: $("themeToggle"),
         colorToggle: $("colorToggle"),
         colorPanel: $("colorPanel"),
@@ -1075,6 +1117,52 @@
         add.title = "New folder"; add.setAttribute("aria-label", "New folder");
         add.innerHTML = '<span class="material-symbols-outlined">create_new_folder</span>';
         els.folderBar.appendChild(add);
+
+        if (currentFolderId !== null) {
+          const del = document.createElement("button");
+          del.className = "folder-item delete"; del.type = "button";
+          del.dataset.deleteFolder = currentFolderId;
+          del.title = "Delete folder"; del.setAttribute("aria-label", "Delete folder");
+          del.innerHTML = '<span class="material-symbols-outlined">delete</span>';
+          els.folderBar.appendChild(del);
+        }
+      }
+
+      function closeMovePanel() {
+        if (!els.movePanel) return;
+        els.movePanel.classList.remove("open");
+        els.movePanel.setAttribute("aria-hidden", "true");
+      }
+
+      function openMovePanel() {
+        if (!els.movePanel || !currentId) return;
+        els.movePanel.replaceChildren();
+        const note = notes.find(n => n.id === currentId);
+        if (!note) return;
+        const targets = [{ id: null, icon: "home", name: "Root" }, ...folders.map(f => ({ id: f.id, icon: "folder", name: f.name }))];
+        targets.forEach(target => {
+          const b = document.createElement("button");
+          b.className = "move-option" + ((note.folderId || null) === target.id ? " active" : "");
+          b.type = "button";
+          b.dataset.folder = target.id || "root";
+          b.innerHTML = `<span class="material-symbols-outlined">${target.icon}</span><span></span>`;
+          b.lastElementChild.textContent = target.name;
+          els.movePanel.appendChild(b);
+        });
+        els.movePanel.classList.add("open");
+        els.movePanel.setAttribute("aria-hidden", "false");
+      }
+
+      function moveCurrentNote(folderId) {
+        const note = notes.find(n => n.id === currentId);
+        if (!note) return;
+        note.folderId = folderId === "root" ? null : folderId;
+        note.updated = Date.now();
+        saveNotes();
+        currentFolderId = note.folderId;
+        renderFolders();
+        renderNotesList();
+        closeMovePanel();
       }
 
       function saveNotes() {
@@ -1643,15 +1731,28 @@ ${closeScript}
         const item = event.target.closest(".folder-item");
         if (!item) return;
         if (item.classList.contains("add")) { createFolder(); return; }
+        if (item.classList.contains("delete")) { deleteFolder(item.dataset.deleteFolder); return; }
         if (item.dataset.folder === "root") { currentFolderId = null; }
         else {
           const folder = folders.find(f => f.id === item.dataset.folder);
           if (!folder) return;
-          if (currentFolderId === folder.id && event.detail === 2) { deleteFolder(folder.id); return; }
           currentFolderId = folder.id;
         }
         renderFolders();
         renderNotesList();
+      });
+
+      els.moveNoteBtn.addEventListener("click", (event) => {
+        event.stopPropagation();
+        if (els.movePanel.classList.contains("open")) closeMovePanel();
+        else openMovePanel();
+      });
+      els.movePanel.addEventListener("click", (event) => {
+        const option = event.target.closest(".move-option");
+        if (option) moveCurrentNote(option.dataset.folder);
+      });
+      document.addEventListener("click", (event) => {
+        if (!event.target.closest("#movePanel") && !event.target.closest("#moveNoteBtn")) closeMovePanel();
       });
 
       els.menuBtn.addEventListener("click", openSidebar);
