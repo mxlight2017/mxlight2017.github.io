@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <meta name="theme-color" content="#F7F2FA" />
-  <title>Nonexistent Notes</title>
+  <title>✎</title>
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -326,6 +326,34 @@
       opacity: .82;
     }
 
+    .folder-bar {
+      display:flex;
+      align-items:center;
+      gap:4px;
+      padding:4px 8px 2px;
+      overflow-x:auto;
+      scrollbar-width:none;
+    }
+    .folder-bar::-webkit-scrollbar { display:none; }
+    .folder-item {
+      flex:0 0 auto;
+      width:44px; height:44px;
+      border:0; border-radius:var(--radius-full);
+      background:transparent; color:var(--on-surface-variant);
+      display:inline-flex; align-items:center; justify-content:center;
+      cursor:pointer;
+    }
+    .folder-item.active {
+      background:var(--secondary-container);
+      color:var(--on-secondary-container);
+    }
+    .folder-item:hover { background:color-mix(in srgb,var(--on-surface) 7%,transparent); }
+    .folder-item.add { color:var(--primary); }
+    .folder-item .material-symbols-outlined { font-size:22px; }
+    .folder-divider { height:1px; margin:2px 16px 4px; background:var(--outline-variant); }
+    @media (max-width:767px) {
+      .folder-bar { padding-top:2px; }
+    }
     .search-wrap {
       padding: 4px 10px 10px;
     }
@@ -802,6 +830,9 @@
         </button>
       </div>
 
+      <div class="folder-bar" id="folderBar"></div>
+      <div class="folder-divider"></div>
+
       <div class="search-wrap">
         <label class="search-box">
           <span class="material-symbols-outlined" style="font-size:20px;">search</span>
@@ -894,6 +925,7 @@
       "use strict";
 
       const STORAGE_KEY = "md3-notes-v2";
+      const FOLDER_KEY = "md3-notes-folders-v1";
       const THEME_KEY = "md3-notes-theme";
       const COLOR_KEY = "md3-notes-color";
       const DEFAULT_COLOR = "#6750A4";
@@ -908,6 +940,7 @@
         overlay: $("overlay"),
         menuBtn: $("menuBtn"),
         notesList: $("notesList"),
+        folderBar: $("folderBar"),
         searchInput: $("searchInput"),
         newNoteBtn: $("newNoteBtn"),
         emptyNewBtn: $("emptyNewBtn"),
@@ -954,6 +987,8 @@
       }
 
       let notes = loadNotes();
+      let folders = loadFolders();
+      let currentFolderId = null;
       let currentId = null;
       let saveTimer = null;
       let toastTimer = null;
@@ -967,11 +1002,74 @@
             id: String(note.id || crypto.randomUUID?.() || Date.now()),
             title: String(note.title || "•"),
             content: String(note.content || ""),
+            folderId: note.folderId ? String(note.folderId) : null,
             updated: Number(note.updated) || Date.now()
           }));
         } catch {
           return [];
         }
+      }
+
+      function loadFolders() {
+        try {
+          const raw = localStorage.getItem(FOLDER_KEY);
+          const data = raw ? JSON.parse(raw) : [];
+          return Array.isArray(data) ? data.map(f => ({
+            id: String(f.id || createId()),
+            name: String(f.name || "Folder")
+          })) : [];
+        } catch { return []; }
+      }
+
+      function saveFolders() {
+        try { localStorage.setItem(FOLDER_KEY, JSON.stringify(folders)); } catch {}
+      }
+
+      function createFolder() {
+        const name = prompt("Folder");
+        if (!name || !name.trim()) return;
+        const folder = { id: createId(), name: name.trim().slice(0, 80) };
+        folders.push(folder);
+        saveFolders();
+        currentFolderId = folder.id;
+        renderFolders();
+        renderNotesList();
+      }
+
+      function deleteFolder(id) {
+        const folder = folders.find(f => f.id === id);
+        if (!folder) return;
+        if (!confirm("Delete folder? Notes will move to root.")) return;
+        notes.forEach(n => { if (n.folderId === id) n.folderId = null; });
+        folders = folders.filter(f => f.id !== id);
+        saveFolders();
+        saveNotes();
+        if (currentFolderId === id) currentFolderId = null;
+        renderFolders();
+        renderNotesList();
+      }
+
+      function renderFolders() {
+        if (!els.folderBar) return;
+        els.folderBar.replaceChildren();
+        const root = document.createElement("button");
+        root.className = "folder-item" + (currentFolderId === null ? " active" : "");
+        root.type = "button"; root.dataset.folder = "root"; root.title = "Root";
+        root.innerHTML = '<span class="material-symbols-outlined">home</span>';
+        els.folderBar.appendChild(root);
+        for (const folder of folders) {
+          const b = document.createElement("button");
+          b.className = "folder-item" + (folder.id === currentFolderId ? " active" : "");
+          b.type = "button"; b.dataset.folder = folder.id;
+          b.title = folder.name; b.setAttribute("aria-label", folder.name);
+          b.innerHTML = '<span class="material-symbols-outlined">folder</span>';
+          els.folderBar.appendChild(b);
+        }
+        const add = document.createElement("button");
+        add.className = "folder-item add"; add.type = "button";
+        add.title = "New folder"; add.setAttribute("aria-label", "New folder");
+        add.innerHTML = '<span class="material-symbols-outlined">create_new_folder</span>';
+        els.folderBar.appendChild(add);
       }
 
       function saveNotes() {
@@ -1015,6 +1113,7 @@
           id: createId(),
           title: "•",
           content: "",
+          folderId: currentFolderId,
           updated: now
         };
 
@@ -1034,6 +1133,8 @@
         if (!note) return;
 
         currentId = id;
+        currentFolderId = note.folderId || null;
+        renderFolders();
         els.noteTitle.value = note.title;
         els.editor.value = note.content;
 
@@ -1077,6 +1178,7 @@
         const sorted = [...notes]
           .sort((a, b) => b.updated - a.updated)
           .filter(note => {
+            if ((note.folderId || null) !== currentFolderId) return false;
             if (!query) return true;
             return `${note.title} ${note.content}`.toLowerCase().includes(query);
           });
@@ -1481,6 +1583,21 @@ ${closeScript}
 
         openNote(id);
         closeSidebar();
+      });
+
+      els.folderBar.addEventListener("click", (event) => {
+        const item = event.target.closest(".folder-item");
+        if (!item) return;
+        if (item.classList.contains("add")) { createFolder(); return; }
+        if (item.dataset.folder === "root") { currentFolderId = null; }
+        else {
+          const folder = folders.find(f => f.id === item.dataset.folder);
+          if (!folder) return;
+          if (currentFolderId === folder.id && event.detail === 2) { deleteFolder(folder.id); return; }
+          currentFolderId = folder.id;
+        }
+        renderFolders();
+        renderNotesList();
       });
 
       els.menuBtn.addEventListener("click", openSidebar);
