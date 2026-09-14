@@ -347,6 +347,11 @@
       background:var(--secondary-container);
       color:var(--on-secondary-container);
     }
+    .folder-item.drag-over {
+      background:var(--primary-container);
+      color:var(--on-primary-container);
+      transform:scale(1.06);
+    }
     .folder-item:hover { background:color-mix(in srgb,var(--on-surface) 7%,transparent); }
     .folder-item.add { color:var(--primary); }
     .folder-item .material-symbols-outlined { font-size:22px; }
@@ -1199,6 +1204,7 @@
           const item = document.createElement("div");
           item.className = "note-item" + (note.id === currentId ? " active" : "");
           item.dataset.id = note.id;
+          item.draggable = true;
 
           const icon = document.createElement("span");
           icon.className = "material-symbols-outlined";
@@ -1583,6 +1589,54 @@ ${closeScript}
 
         openNote(id);
         closeSidebar();
+      });
+
+      let draggedNoteId = null;
+
+      els.notesList.addEventListener("dragstart", (event) => {
+        const item = event.target.closest(".note-item");
+        if (!item) return;
+        draggedNoteId = item.dataset.id;
+        item.classList.add("dragging");
+        event.dataTransfer.effectAllowed = "move";
+        event.dataTransfer.setData("text/plain", draggedNoteId);
+      });
+
+      els.notesList.addEventListener("dragend", (event) => {
+        const item = event.target.closest(".note-item");
+        if (item) item.classList.remove("dragging");
+        draggedNoteId = null;
+        els.folderBar.querySelectorAll(".drag-over").forEach(el => el.classList.remove("drag-over"));
+      });
+
+      els.folderBar.addEventListener("dragover", (event) => {
+        const item = event.target.closest(".folder-item");
+        if (!item || item.classList.contains("add")) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "move";
+        els.folderBar.querySelectorAll(".drag-over").forEach(el => el.classList.remove("drag-over"));
+        item.classList.add("drag-over");
+      });
+
+      els.folderBar.addEventListener("dragleave", (event) => {
+        const item = event.target.closest(".folder-item");
+        if (item && !item.contains(event.relatedTarget)) item.classList.remove("drag-over");
+      });
+
+      els.folderBar.addEventListener("drop", (event) => {
+        const item = event.target.closest(".folder-item");
+        if (!item || item.classList.contains("add")) return;
+        event.preventDefault();
+        const noteId = draggedNoteId || event.dataTransfer.getData("text/plain");
+        const note = notes.find(n => n.id === noteId);
+        if (!note) return;
+        note.folderId = item.dataset.folder === "root" ? null : item.dataset.folder;
+        note.updated = Date.now();
+        saveNotes();
+        currentFolderId = note.folderId;
+        renderFolders();
+        renderNotesList();
+        if (currentId === note.id) openNote(note.id);
       });
 
       els.folderBar.addEventListener("click", (event) => {
